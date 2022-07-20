@@ -1,4 +1,4 @@
-# PointFix: Learning to Fix Domain Bias for Robust Online Stereo Adaptation(PointFix)
+# PointFix: Learning to Fix Domain Bias for Robust Online Stereo Adaptation(PointFix) ECCV 2022
 
 Kwonyoung Kim<sup>1</sup> Jungin Park<sup>1</sup> [Jiyoung Lee](https://lee-jiyoung.github.io/)<sup>2</sup> Dongbo Min<sup>3</sup> Kwanghoon Sohn<sup>1</sup>
 
