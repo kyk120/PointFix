@@ -392,8 +392,6 @@ if __name__ == '__main__':
                         help="online adaptation mode: NONE - perform only inference, FULL - full online backprop, MAD - backprop only on portions of the network",
                         choices=['NONE', 'FULL', 'MAD'], default='MAD')
     parser.add_argument("--logDispStep", help="save disparity every K step, -1 to disable", default=-1, type=int)
-    parser.add_argument("--dataset_param", help="dataset parameters to convert depth and disparity", required=True,
-                        type=float)
     parser.add_argument("--resize_flag", help="flag to resize input", default=False)
     parser.add_argument("--crop_flag", help="flag to crop input", action='store_true')
     parser.add_argument("--save", help='flag to save features', action='store_true')
