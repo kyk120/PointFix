@@ -12,7 +12,7 @@ We employed pretrained initial weights for PointFix training.
 
 Pretrained MADNet weights for PointFix training can be found in the [Real-Time Self-Adaptive Deep Stereo](https://github.com/CVLAB-Unibo/Real-time-self-adaptive-deep-stereo) page.
 
-Example of PointFix training of MADNet:
+Example of PointFix training for MADNet:
 ```bash
 OUTPUT="path/to/output/folder"
 DATASET="./example_dataset.csv"
