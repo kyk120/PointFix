@@ -9,7 +9,8 @@ Kwonyoung Kim<sup>1</sup> Jungin Park<sup>1</sup> [Jiyoung Lee](https://lee-jiyo
 
 This software has been tested with python3 and tensorflow 1.13.1
 
-We employed pretrained initial weights for PointFix training.\\
+We employed pretrained initial weights for PointFix training.
+
 Pretrained MADNet weights for PointFix training can be found in the [Real-Time Self-Adaptive Deep Stereo](https://github.com/CVLAB-Unibo/Real-time-self-adaptive-deep-stereo) page.
 
 Example of PointFix training of MADNet:
