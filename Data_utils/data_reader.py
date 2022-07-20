@@ -138,6 +138,7 @@ class dataset():
         left_file_name = files[0]
         right_file_name = files[1]
         gt_file_name = files[2]
+        dataset_param = files[3]
 
         #read rgb images
         left_image = read_image_from_disc(left_file_name)
@@ -179,11 +180,32 @@ class dataset():
         if self._augment:
             left_image,right_image=preprocessing.augment(left_image,right_image)
 
-        return [left_image,right_image,gt_image]
+        return [left_image,right_image,gt_image,dataset_param]
     
     def _build_input_pipeline(self):
         left_files, right_files, gt_files, _ = read_list_file(self._path_file)
-        self._couples = [[l, r, gt] for l, r, gt in zip(left_files, right_files, gt_files)]
+
+        dataset_param_list = []
+        for gt_file in gt_files:
+            # KITTI parameters
+            if '2011_09_26' in gt_file:
+                dataset_param = '384.38148'
+            elif '2011_09_28' in gt_file:
+                dataset_param = '379.86641'
+            elif '2011_09_29' in gt_file:
+                dataset_param = '380.81852'
+            elif '2011_09_30' in gt_file:
+                dataset_param = '380.34753'
+            elif '2011_10_03' in gt_file:
+                dataset_param = '382.66995'
+            # Synthia parameter
+            elif 'SEQ' in gt_file:
+                dataset_param = '166'
+            else:
+                dataset_param = '381'
+            dataset_param_list.append(dataset_param)
+
+        self._couples = [[l, r, gt, dp] for l, r, gt, dp in zip(left_files, right_files, gt_files, dataset_param_list)]
         #flags 
         self._usePfm = gt_files[0].endswith('pfm') or gt_files[0].endswith('PFM')
         if not self._usePfm:
@@ -213,6 +235,7 @@ class dataset():
         self._left_batch = images[0]
         self._right_batch = images[1]
         self._gt_batch = images[2]
+        self._dataset_param = images[3]
 
     ################# PUBLIC METHOD #######################
 
@@ -223,7 +246,7 @@ class dataset():
         return (len(self)*self._num_epochs)//self._batch_size
 
     def get_batch(self):
-        return self._left_batch,self._right_batch,self._gt_batch
+        return self._left_batch,self._right_batch,self._gt_batch,self._dataset_param
     
     def get_couples(self):
         return self._couples
