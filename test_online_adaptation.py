@@ -77,7 +77,7 @@ def main(args):
         net_args['train_portion'] = 'BEGIN'
         net_args['bulkhead'] = True if args.mode == 'MAD' else False
         net_args['input_norm'] = True
-        stereo_net = Nets.get_stereo_net(args.modelName, net_args)
+        stereo_net = Nets.factory.getStereoNet(args.modelName, net_args)
         print('Stereo Prediction Model:\n', stereo_net)
         predictions = stereo_net.get_disparities()
         full_res_disp = predictions[-1]
@@ -370,7 +370,7 @@ if __name__ == '__main__':
     parser.add_argument("--weights", help="path to the initial weights for the disparity estimation network",
                         required=True)
     parser.add_argument("--modelName", help="name of the stereo model to be used", default="Dispnet",
-                        choices=Nets.STEREO_FACTORY.keys())
+                        choices=Nets.factory.getAvailableNets())
     parser.add_argument("--numBlocks", help="number of CNN portions to train at each iteration", type=int, default=1)
     parser.add_argument("--lr", help="value for learning rate", default=0.0001, type=float)
     parser.add_argument("--blockConfig", help="path to the block_config json file", required=True)
