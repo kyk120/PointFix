@@ -2,7 +2,7 @@
 
 Kwonyoung Kim<sup>1</sup> Jungin Park<sup>1</sup> [Jiyoung Lee](https://lee-jiyoung.github.io/)<sup>2</sup> Dongbo Min<sup>3</sup> Kwanghoon Sohn<sup>1</sup>
 
-<sup>1</sup><sub>[Yonsei University](https://www.yonsei.ac.kr)</sub>
+<sup>1</sup><sub>[Yonsei University](https://www.yonsei.ac.kr)</sub><br>
 <sup>2</sup><sub>[NAVER AI LAB](https://naver-career.gitbook.io/en/teams/clova-cic)</sub><br>
 <sup>3</sup><sub>[Ewha University](https://www.ewha.ac.kr)</sub>
 
