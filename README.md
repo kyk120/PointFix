@@ -10,7 +10,7 @@ Required packages can be found in the packagelist.txt.
 
 We employed pretrained initial weights for PointFix training.
 
-The pretrained MADNet weights for PointFix training can be found in the [Real-Time Self-Adaptive Deep Stereo](https://github.com/CVLAB-Unibo/Real-time-self-adaptive-deep-stereo) page.
+The pretrained MADNet and DispNet weights for PointFix training can be found in the [Real-Time Self-Adaptive Deep Stereo](https://github.com/CVLAB-Unibo/Real-time-self-adaptive-deep-stereo) page.
 
 Example of PointFix training for MADNet:
 ```bash
