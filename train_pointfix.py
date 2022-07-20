@@ -249,7 +249,7 @@ if __name__ == '__main__':
     shutil.copytree('./MetaTrainer', os.path.join(args.output, 'codes/MetaTrainer'))
     shutil.copytree('./Nets', os.path.join(args.output, 'codes/Nets'))
     shutil.copy('train_pointfix.py', os.path.join(args.output, 'codes/train_pointfix.py'))
-    shutil.copy('test.py', os.path.join(args.output, 'codes/test.py'))
+    shutil.copy('test_online_adaptation.py', os.path.join(args.output, 'codes/test_online_adaptation.py'))
 
     main(args)
 
