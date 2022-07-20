@@ -15,7 +15,7 @@ Pretrained MADNet weights can be found in the [Real-Time Self-Adaptive Deep Ster
 Example of PointFix training of MADNet:
 ```bash
 OUTPUT="path/to/output/folder"
-DATASET="./example_sequence.csv"
+DATASET="./example_dataset.csv"
 BATCH_SIZE="4"
 ITERATIONS=30000
 PRETRAINED_WEIGHTS="./pretrained_nets/MADNet/synthetic/weights.ckpt"
@@ -37,7 +37,7 @@ python train_pointfix.py --dataset $DATASET -o $OUT_FOLDER -b $BATCH_SIZE -n $IT
 
 Example of online adaptation test using MADNet and MAD:
 ```bash
-LIST="path/to/the/list/of/frames/" 
+LIST="./example_sequence.csv" 
 OUTPUT="path/to/output/folder"
 WEIGHTS="path/to/pretrained/network"
 MODELNAME="MADNet"
