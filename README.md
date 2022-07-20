@@ -6,8 +6,7 @@ Kwonyoung Kim<sup>1</sup> Jungin Park<sup>1</sup> [Jiyoung Lee](https://lee-jiyo
 <sup>2</sup><sub>[NAVER AI LAB](https://naver-career.gitbook.io/en/teams/clova-cic)</sub><br>
 <sup>3</sup><sub>[Ewha University](https://www.ewha.ac.kr)</sub>
 
-
-This software has been tested with python3 and tensorflow 1.13.1
+Required packages can be found in the packagelist.txt
 
 We employed pretrained initial weights for PointFix training.
 
