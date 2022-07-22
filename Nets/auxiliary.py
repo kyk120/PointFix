@@ -22,15 +22,6 @@ class StandardPointHead(Stereo_net.StereoNet):
         self.input_channels = ph_config['input_channels']
         # fmt: on
 
-        # """
-        print(f'self.num_classes is {self.num_classes}')
-        print(f'self.fc_dim is {self.fc_dim}')
-        print(f'self.num_fc is {self.num_fc}')
-        print(f'self.cls_agnostic_mask is {self.cls_agnostic_mask}')
-        print(f'self.coarse_pred_each_layer is {self.coarse_pred_each_layer}')
-        print(f'self.input_channels is {self.input_channels}')
-        # print(f'input_shape is {input_shape}')
-        # """
         self.fine_grained_features = args['fine_grained_features']
         self.post_features = args['post_features']
         self.refine = []
@@ -55,12 +46,9 @@ class StandardPointHead(Stereo_net.StereoNet):
             # self._add_to_layers(names[-1], tf.contrib.layers.instance_norm(input_layer))
             self._add_to_layers(names[-1], sharedLayers.batch_norm(input_layer, variable_collection=self._variable_collection))
             self.normed_fine_grained_features = self._get_layer_as_input(names[-1])
-            print(f'self.normed_fine_grained_features is {self.normed_fine_grained_features}')
-            print(f'self.post_features is {self.post_features}')
 
         with tf.variable_scope('point_rend/concat'):
             input_layer = tf.concat([self.normed_fine_grained_features, self.post_features], axis=-1)
-            print(f'input_layer is {input_layer}')
 
         with tf.variable_scope('point_rend/point_rend'):
 
@@ -93,17 +81,12 @@ class FeatureExtractor(Stereo_net.StereoNet):
 
         self.input_channels = fe_config[0]
         self.hidden_channels1 = fe_config[1]
-        print(f'self.input_channels is {self.input_channels}')
-        print(f'self.hidden_channels1 is {self.hidden_channels1}')
 
         if len(fe_config) == 3:
             self.output_channels = fe_config[2]
-            print(f'self.output_channels is {self.output_channels}')
         else:
             self.hidden_channels2 = fe_config[2]
             self.output_channels = fe_config[3]
-            print(f'self.hidden_channels2 is {self.hidden_channels2}')
-            print(f'self.output_channels is {self.output_channels}')
 
         self.five_mode = five_mode
         self.prediction = args['prediction']
@@ -232,9 +215,7 @@ def point_sample(imgs, coords):
         dim2 = tf.cast(inp_size[2], 'float32')
         dim1 = tf.cast(inp_size[2] * inp_size[1], 'float32')
         #dim1 = tf.cast(inp_size[1], 'float32')
-        #print(f"tf.cast(tf.range(coord_size[0]), 'float32') is {tf.cast(tf.range(coord_size[0]), 'float32')}")
         base = tf.reshape(_repeat(tf.cast(tf.range(coord_size[0]), 'float32') * dim1, coord_size[1]), [out_size[0], out_size[1], 1])
-        #print(f'base is {base}')
 
         base_y0 = base + y0_safe * dim2
         base_y1 = base + y1_safe * dim2
@@ -309,40 +290,6 @@ def get_uncertain_point_coords_on_grid(uncertainty_map, num_points):
     return point_coords_abs, point_coords  # , h_step, w_step
 
 
-"""
-
-uncertainty_map = tf.placeholder(tf.float32, [2, 4, 8, 1])
-point_indices, point_coords, h_step, w_step = get_uncertain_point_coords_on_grid(uncertainty_map, 5)
-with tf.Session() as sess:
-    a = np.array([
-        [[0, 0, 0, 0, 0, 0, 0, 0],
-         [0, 0, 0, 0, 0, 0, 0, 0],
-         [0, 0, 0, 0, 0, 0, 0, 0],
-         [0, 5, 4, 3, 2, 0, 0, 1]],
-
-        [[0, 0, 0, 0, 0, 0, 0, 0],
-         [0, 0, 0, 0, 0, 0, 0, 0],
-         [0, 0, 0, 0, 5, 4, 3, 0],
-         [0, 0, 0, 0, 0, 1, 2, 0]]
-    ])
-
-    a = np.expand_dims(a, -1)
-
-    #print(f'a is {a}')
-    print(f'a.shape is {a.shape}')
-
-    pi, pc, hs, ws = sess.run([point_indices, point_coords, h_step, w_step], feed_dict={uncertainty_map: a})
-
-    print(f'point_indices is {pi}')
-    print(f'point_coords is {pc}')
-
-    print(f'point_indices.shape is {pi.shape}')
-    print(f'point_coords.shape is {np.array(pc).shape}')
-
-    print(f'hs is {hs}')
-    print(f'ws is {ws}')
-
-#"""
 
 
 
