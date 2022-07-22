@@ -4,4 +4,5 @@ pretrained/
 # ignore csv file
 csv_seqs.csv
 
+# ignore training
 trainig/
