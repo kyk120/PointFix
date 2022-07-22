@@ -1,0 +1,7 @@
+# ignore pretrained weights
+pretrained/
+
+# ignore csv file
+csv_seqs.csv
+
+trainig/
