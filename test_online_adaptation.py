@@ -89,8 +89,6 @@ def main(args):
         #full_reconstruction_loss = loss_factory.get_reprojection_loss('mean_SSIM_l1', reduced=True)(predictions, inputs)
         full_reconstruction_loss = loss_factory.get_reprojection_loss('mean_SSIM_l1', reduced=True)([full_res_disp], inputs)
         reprojection_error_map = loss_factory.get_reprojection_loss('ssim_l1', reduced=False)(predictions, inputs)[0]
-        print(f'reprojection_error_map is {reprojection_error_map}')
-        print(f'hihi')
 
     # build validation ops
     with tf.variable_scope('validation_error'):
@@ -212,18 +210,6 @@ def main(args):
         step = 0
         max_steps = data_set.get_max_steps()
         total_step_time = 0
-
-        if args.save:
-            prediction_path = os.path.join(args.output, 'prediction')
-            os.makedirs(prediction_path, exist_ok=True)
-            gt_path = os.path.join(args.output, 'gt')
-            os.makedirs(gt_path, exist_ok=True)
-            corr_path = os.path.join(args.output, 'corr')
-            os.makedirs(corr_path, exist_ok=True)
-            corr_2_path = os.path.join(args.output, 'corr_2')
-            os.makedirs(corr_2_path, exist_ok=True)
-            reprojection_error_map_path = os.path.join(args.output, 'reprojection_error_map')
-            os.makedirs(reprojection_error_map_path, exist_ok=True)
 
         try:
             start_time = time.time()
@@ -394,7 +380,6 @@ if __name__ == '__main__':
     parser.add_argument("--logDispStep", help="save disparity every K step, -1 to disable", default=-1, type=int)
     parser.add_argument("--resize_flag", help="flag to resize input", default=False)
     parser.add_argument("--crop_flag", help="flag to crop input", action='store_true')
-    parser.add_argument("--save", help='flag to save features', action='store_true')
     parser.add_argument("--gpu_num", help="gpu index to run", default="0")
     args = parser.parse_args()
 
@@ -403,6 +388,7 @@ if __name__ == '__main__':
     if args.logDispStep != -1 and not os.path.exists(os.path.join(args.output, 'disparities')):
         os.makedirs(os.path.join(args.output, 'rgbs'))
         os.makedirs(os.path.join(args.output, 'disparities'))
+        os.makedirs(os.path.join(args.output, 'gt'))
     shutil.copy(args.blockConfig, os.path.join(args.output, 'config.json'))
     with open(os.path.join(args.output, 'params.sh'), 'w+') as out:
         sys.argv[0] = os.path.join(os.getcwd(), sys.argv[0])
