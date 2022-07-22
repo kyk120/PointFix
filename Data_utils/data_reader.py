@@ -87,10 +87,7 @@ def read_image_from_disc(image_path,shape=None,dtype=tf.uint8):
     Returns:
         meta_op with image_data
     """
-    #tf.print('read_image_from_disc')
-    #tf.print('image_path ', image_path)
     image_raw = tf.read_file(image_path)
-    #tf.print('image_raw ', image_raw)
     if dtype==tf.uint8:
         image = tf.image.decode_image(image_raw)
     else:
@@ -99,9 +96,6 @@ def read_image_from_disc(image_path,shape=None,dtype=tf.uint8):
         image.set_shape([None,None,3])
     else:
         image.set_shape(shape)
-    #tf.print('image ', image.shape)
-    #tf.print('image ', image)
-    #tf.print('tf.cast(image, dtype=tf.float32) ', tf.cast(image, dtype=tf.float32))
     return tf.cast(image, dtype=tf.float32)
 
 
@@ -215,7 +209,6 @@ class dataset():
         print('Input file loaded, starting to build input pipelines')
         print('FLAGS:')
         print('_usePfmGt',self._usePfm)
-        # print('_double_prec_gt', self._double_prec_gt)
 
         #create dataset
         dataset = tf.data.Dataset.from_tensor_slices(self._couples).repeat(self._num_epochs)
@@ -383,7 +376,6 @@ class metaDataset():
         self._build_input_pipeline()
     
     def _decode_gt(self, gt):
-        #tf.print('decode_gt')
         if self._usePfm:
             gt_image_op = tf.py_func(lambda x: readPFM(x)[0], [gt], tf.float32)
             gt_image_op.set_shape([None,None,1])
