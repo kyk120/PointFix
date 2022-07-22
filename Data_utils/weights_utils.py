@@ -13,7 +13,6 @@ def get_var_to_restore_list(ckpt_path, mask=[], prefix="", ignore_list=[]):
     variables_dict = {}
     for v in variables:
         name = v.name[:-2]
-        #print(name)
         skip=False
         #check for skip
         for m in mask:
@@ -21,18 +20,15 @@ def get_var_to_restore_list(ckpt_path, mask=[], prefix="", ignore_list=[]):
                 skip=True
                 continue
         if not skip:
-            #print(f'{name} restore!')
             variables_dict[v.name[:-2]] = v
 
 
     #print('====================================================')
     reader = tf.train.NewCheckpointReader(ckpt_path)
     var_to_shape_map = reader.get_variable_to_shape_map()
-    print(f'var_to_shape_map is {var_to_shape_map}')
     var_to_restore = {}
     for key in var_to_shape_map:
         t_key=key
-        print(f'key is {key}')
         for ig in ignore_list:
             t_key=t_key.replace(ig,'')
         if prefix+t_key in variables_dict.keys():
