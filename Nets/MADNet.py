@@ -278,8 +278,6 @@ class MADNet(Stereo_net.StereoNet):
                 dsi_6 = self._stereo_cost_volume_correlation(left_0_sample_6, right_0_sample_6, args['radius_d'],
                                                              args['stride'])
             self._layers['dsi_6'] = dsi_6
-            print(f'dsi_6.shape is {dsi_6.shape}')
-            print(f'left_0_sample_6.shape is {left_0_sample_6.shape}')
 
             V6 = self._stereo_estimator(dsi_6, scope="fgc-volume-filtering-6")
             real_disp_v6 = self._make_disp(V6, scales[6])
@@ -305,8 +303,6 @@ class MADNet(Stereo_net.StereoNet):
                 dsi_5 = self._stereo_cost_volume_correlation(left_0_sample_5, right_0_sample_5, args['radius_d'],
                                                              args['stride'])
             self._layers['dsi_5'] = dsi_5
-            print(f'dsi_5.shape is {dsi_5.shape}')
-            print(f'left_0_sample_5.shape is {left_0_sample_5.shape}')
 
             V5 = self._stereo_estimator(dsi_5, upsampled_disp=u5, scope="fgc-volume-filtering-5")
             real_disp_v5 = self._make_disp(V5, scales[5])
@@ -332,8 +328,6 @@ class MADNet(Stereo_net.StereoNet):
                 dsi_4 = self._stereo_cost_volume_correlation(left_0_sample_4, right_0_sample_4, args['radius_d'],
                                                              args['stride'])
             self._layers['dsi_4'] = dsi_4
-            print(f'dsi_4.shape is {dsi_4.shape}')
-            print(f'left_0_sample_4.shape is {left_0_sample_4.shape}')
 
             V4 = self._stereo_estimator(dsi_4, upsampled_disp=u4, scope="fgc-volume-filtering-4")
             real_disp_v4 = self._make_disp(V4, scales[4])
@@ -359,8 +353,6 @@ class MADNet(Stereo_net.StereoNet):
                 dsi_3 = self._stereo_cost_volume_correlation(left_0_sample_3, right_0_sample_3, args['radius_d'],
                                                              args['stride'])
             self._layers['dsi_3'] = dsi_3
-            print(f'dsi_3.shape is {dsi_3.shape}')
-            print(f'left_0_sample_3.shape is {left_0_sample_3.shape}')
 
             V3 = self._stereo_estimator(dsi_3, upsampled_disp=u3, scope="fgc-volume-filtering-3")
             real_disp_v3 = self._make_disp(V3, scales[3])
@@ -386,10 +378,7 @@ class MADNet(Stereo_net.StereoNet):
                 dsi_2 = self._stereo_cost_volume_correlation(left_0_sample_2, right_0_sample_2, args['radius_d'],
                                                              args['stride'])
             self._layers['dsi_2'] = dsi_2
-            print(f'dsi_2.shape is {dsi_2.shape}')
-            print(f'left_0_sample_2.shape is {left_0_sample_2.shape}')
             self._layers['corr_2'] = self._stereo_cost_volume_correlation(left_0_sample_2, self._get_layer_as_input('right/conv4'), 40, 1)
-            print(f"self._layers['corr_2'].shape is {self._layers['corr_2'].shape}")
 
             self._stereo_estimator(dsi_2, upsampled_disp=u2, scope="fgc-volume-filtering-2")
             V2_init = self._get_layer_as_input('fgc-volume-filtering-2/disp6')
