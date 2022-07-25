@@ -98,6 +98,29 @@ def read_image_from_disc(image_path,shape=None,dtype=tf.uint8):
         image.set_shape(shape)
     return tf.cast(image, dtype=tf.float32)
 
+def find_dataset_param(gt_files):
+    dataset_param_list = []
+    for gt_file in gt_files:
+        # KITTI parameters
+        if '2011_09_26' in gt_file:
+            dataset_param = '384.38148'
+        elif '2011_09_28' in gt_file:
+            dataset_param = '379.86641'
+        elif '2011_09_29' in gt_file:
+            dataset_param = '380.81852'
+        elif '2011_09_30' in gt_file:
+            dataset_param = '380.34753'
+        elif '2011_10_03' in gt_file:
+            dataset_param = '382.66995'
+        # Synthia parameter
+        elif 'SEQ' in gt_file:
+            dataset_param = '166'
+        elif '_subset' in gt_file:
+            dataset_param = '-1'
+        else:
+            dataset_param = None
+        dataset_param_list.append(dataset_param)
+    return dataset_param_list
 
 class dataset():
     """
@@ -179,25 +202,8 @@ class dataset():
     def _build_input_pipeline(self):
         left_files, right_files, gt_files, _ = read_list_file(self._path_file)
 
-        dataset_param_list = []
-        for gt_file in gt_files:
-            # KITTI parameters
-            if '2011_09_26' in gt_file:
-                dataset_param = '384.38148'
-            elif '2011_09_28' in gt_file:
-                dataset_param = '379.86641'
-            elif '2011_09_29' in gt_file:
-                dataset_param = '380.81852'
-            elif '2011_09_30' in gt_file:
-                dataset_param = '380.34753'
-            elif '2011_10_03' in gt_file:
-                dataset_param = '382.66995'
-            # Synthia parameter
-            elif 'SEQ' in gt_file:
-                dataset_param = '166'
-            else:
-                dataset_param = '381'
-            dataset_param_list.append(dataset_param)
+        # find parameters to convert disparity map
+        dataset_param_list = find_dataset_param(gt_files)
 
         self._couples = [[l, r, gt, dp] for l, r, gt, dp in zip(left_files, right_files, gt_files, dataset_param_list)]
         #flags 
@@ -272,26 +278,9 @@ class task_library():
         """
         assert(os.path.exists(filename), filename)
         left_files, right_files, gt_files,_ = read_list_file(filename)
-        # parameters to convert depth to disparity
-        dataset_param_list = []
-        for gt_file in gt_files:
-            # KITTI parameters
-            if '2011_09_26' in gt_file:
-                dataset_param = '384.38148'
-            elif '2011_09_28' in gt_file:
-                dataset_param = '379.86641'
-            elif '2011_09_29' in gt_file:
-                dataset_param = '380.81852'
-            elif '2011_09_30' in gt_file:
-                dataset_param = '380.34753'
-            elif '2011_10_03' in gt_file:
-                dataset_param = '382.66995'
-            # Synthia parameter
-            elif 'SEQ' in gt_file:
-                dataset_param = '166'
-            else:
-                dataset_param = '381'
-            dataset_param_list.append(dataset_param)
+        
+        # find parameters to convert disparity map
+        dataset_param_list = find_dataset_param(gt_files)
 
         self._task_dictionary[filename] = {
             'left': left_files,
