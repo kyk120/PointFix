@@ -1,470 +1,400 @@
 import tensorflow as tf
 import numpy as np
-import cv2
-import re
+import argparse
+import Nets
 import os
-import random
+import sys
+import time
+import cv2
+import json
+import datetime
+import shutil
+from matplotlib import pyplot as plt
+from Data_utils import data_reader, weights_utils, preprocessing
+from Losses import loss_factory
+from Sampler import sampler_factory
 
-from Data_utils import preprocessing
-from functools import partial
+# static params
+MAX_DISP = 256
+PIXEL_TH = 3
 
-def readPFM(file):
-    """
-    Load a pfm file as a numpy array
-    Args:
-        file: path to the file to be loaded
-    Returns:
-        content of the file as a numpy array
-    """
-    tf.print('readPFM')
-    file = open(file, 'rb')
 
-    color = None
-    width = None
-    height = None
-    scale = None
-    endian = None
+def scale_tensor(tensor, scale):
+    return preprocessing.rescale_image(tensor, [tf.shape(tensor)[1] // scale, tf.shape(tensor)[2] // scale])
 
-    header = file.readline().rstrip()
-    if header == b'PF':
-        color = True
-    elif header == b'Pf':
-        color = False
+
+def softmax(x):
+    """Compute softmax values for each sets of scores in x."""
+    return np.exp(x) / np.sum(np.exp(x), axis=0)
+
+
+def main(args):
+    # load json file config
+    with open(args.blockConfig) as json_data:
+        train_config = json.load(json_data)
+
+    if args.resize_flag != 'False':
+        print(f'args.resize_flag is {args.resize_flag}')
+        print(f'resize applied!')
+        resize_shape = args.imageShape
+        crop_shape = args.imageShape
     else:
-        raise Exception('Not a PFM file.')
+        resize_shape = [None, None]
 
-    dims = file.readline()
-    try:
-        width, height = list(map(int, dims.split()))
-    except:
-        raise Exception('Malformed PFM header.')
-
-    scale = float(file.readline().rstrip())
-    if scale < 0:  # little-endian
-        endian = '<'
-        scale = -scale
-    else:
-        endian = '>'  # big-endian
-
-    data = np.fromfile(file, endian + 'f')
-    shape = (height, width, 3) if color else (height, width, 1)
-
-    data = np.reshape(data, shape)
-    data = np.flipud(data)
-    return data, scale
-
-def read_list_file(path_file):
-    """
-    Read dataset description file encoded as left;right;disp;conf
-    Args:
-        path_file: path to the file encoding the database
-    Returns:
-        [left,right,gt,conf] 4 list containing the images to be loaded
-    """
-    with open(path_file,'r') as f_in:
-        lines = f_in.readlines()
-    lines = [x for x in lines if not x.strip()[0] == '#']
-    left_file_list = []
-    right_file_list = []
-    gt_file_list = []
-    conf_file_list = []
-    for l in lines:
-        to_load = re.split(',|;',l.strip())
-        left_file_list.append(to_load[0])
-        right_file_list.append(to_load[1])
-        if len(to_load)>2:
-            gt_file_list.append(to_load[2])
-        if len(to_load)>3:
-            conf_file_list.append(to_load[3])
-    return left_file_list,right_file_list,gt_file_list,conf_file_list
-
-def read_image_from_disc(image_path,shape=None,dtype=tf.uint8):
-    """
-    Create a queue to hoold the paths of files to be loaded, then create meta op to read and decode image
-    Args:
-        image_path: metaop with path of the image to be loaded
-        shape: optional shape for the image
-    Returns:
-        meta_op with image_data
-    """
-    image_raw = tf.read_file(image_path)
-    if dtype==tf.uint8:
-        image = tf.image.decode_image(image_raw)
-    else:
-        image = tf.image.decode_png(image_raw,channels=1,dtype=dtype)
-    if shape is None:
-        image.set_shape([None,None,3])
-    else:
-        image.set_shape(shape)
-    return tf.cast(image, dtype=tf.float32)
-
-def find_dataset_param(gt_files):
-    dataset_param_list = []
-    for gt_file in gt_files:
-        # KITTI parameters
-        if '2011_09_26' in gt_file:
-            dataset_param = '384.38148'
-        elif '2011_09_28' in gt_file:
-            dataset_param = '379.86641'
-        elif '2011_09_29' in gt_file:
-            dataset_param = '380.81852'
-        elif '2011_09_30' in gt_file:
-            dataset_param = '380.34753'
-        elif '2011_10_03' in gt_file:
-            dataset_param = '382.66995'
-        # Synthia parameter
-        elif 'SEQ' in gt_file:
-            dataset_param = '166'
-        elif '_subset' in gt_file:
-            dataset_param = '-1'
+        if args.crop_flag:
+            crop_shape = args.imageShape
         else:
-            dataset_param = None
-        dataset_param_list.append(dataset_param)
-    return dataset_param_list
+            crop_shape = [320, 1216]
 
-class dataset():
-    """
-    Class that reads a dataset for deep stereo
-    """
-    def __init__(
-        self,
-        path_file,
-        batch_size=4,
-        resize_shape=[None,None],
-        crop_shape=[320,1216],
-        num_epochs=None,
-        augment=False,
-        is_training=True,
-        shuffle=True):
-    
-        if not os.path.exists(path_file):
-            raise Exception('File not found during dataset construction')
-    
-        self._path_file = path_file
-        self._batch_size=batch_size
-        self._resize_shape = resize_shape
-        self._crop_shape = crop_shape
-        self._num_epochs=num_epochs
-        self._augment=augment
-        self._shuffle=shuffle
-        self._is_training = is_training
-
-        self._build_input_pipeline()
-    
-    def _load_sample(self, files):
-        left_file_name = files[0]
-        right_file_name = files[1]
-        gt_file_name = files[2]
-        dataset_param = files[3]
-
-        #read rgb images
-        left_image = read_image_from_disc(left_file_name)
-        right_image = read_image_from_disc(right_file_name)
-
-        #read gt 
-        if self._usePfm:
-            gt_image = tf.py_func(lambda x: readPFM(x)[0], [gt_file_name], tf.float32)
-            gt_image.set_shape([None,None,1])
-        else:
-            read_type = tf.uint16 if self._double_prec_gt else tf.uint8
-            gt_image = read_image_from_disc(gt_file_name,shape=[None,None,1], dtype=read_type)
-            gt_image = tf.cast(gt_image,tf.float32)
-            if self._double_prec_gt:
-                gt_image = gt_image/256.0
-        
-        #crop gt to fit with image (SGM adds some paddings who know why...)
-        gt_image = gt_image[:,:tf.shape(left_image)[1],:]
-
-        if self._resize_shape[0] is not None:
-
-            left_image = tf.expand_dims(left_image, axis=0)
-            right_image = tf.expand_dims(right_image, axis=0)
-
-            scale_factor = tf.cast(tf.shape(gt_image)[1],tf.float32)/float(self._resize_shape[1])
-            left_image = preprocessing.rescale_image(left_image,self._resize_shape)
-            right_image = preprocessing.rescale_image(right_image, self._resize_shape)
-            gt_image = tf.image.resize_nearest_neighbor(tf.expand_dims(gt_image,axis=0), self._resize_shape)[0]*scale_factor
-
-            left_image = tf.squeeze(left_image, axis=0)
-            right_image = tf.squeeze(right_image, axis=0)
-
-        if self._crop_shape[0] is not None:
-            if self._is_training:
-                left_image,right_image,gt_image = preprocessing.random_crop(self._crop_shape, [left_image,right_image,gt_image])
-            else:
-                (left_image,right_image,gt_image) = [tf.image.resize_image_with_crop_or_pad(x,self._crop_shape[0],self._crop_shape[1]) for x in [left_image,right_image,gt_image]]
-
-        if self._augment:
-            left_image,right_image=preprocessing.augment(left_image,right_image)
-
-        return [left_image,right_image,gt_image,dataset_param]
-    
-    def _build_input_pipeline(self):
-        left_files, right_files, gt_files, _ = read_list_file(self._path_file)
-
-        # find parameters to convert disparity map
-        dataset_param_list = find_dataset_param(gt_files)
-
-        self._couples = [[l, r, gt, dp] for l, r, gt, dp in zip(left_files, right_files, gt_files, dataset_param_list)]
-        #flags 
-        self._usePfm = gt_files[0].endswith('pfm') or gt_files[0].endswith('PFM')
-        if not self._usePfm:
-            gg = cv2.imread(gt_files[0],-1)
-            self._double_prec_gt = (gg.dtype == np.uint16)
-        
-        print('Input file loaded, starting to build input pipelines')
-        print('FLAGS:')
-        print('_usePfmGt',self._usePfm)
-
-        #create dataset
-        dataset = tf.data.Dataset.from_tensor_slices(self._couples).repeat(self._num_epochs)
-        if self._shuffle:
-            dataset = dataset.shuffle(self._batch_size*50)
-        
-        #load images
-        dataset = dataset.map(self._load_sample)
-
-        #transform data
-        dataset = dataset.batch(self._batch_size, drop_remainder=True)
-        dataset = dataset.prefetch(buffer_size=30)
-
-        #get iterator and batches
-        iterator = dataset.make_one_shot_iterator()
-        images = iterator.get_next()
-        self._left_batch = images[0]
-        self._right_batch = images[1]
-        self._gt_batch = images[2]
-        self._dataset_param = images[3]
-
-    ################# PUBLIC METHOD #######################
-
-    def __len__(self):
-        return len(self._couples)
-    
-    def get_max_steps(self):
-        return (len(self)*self._num_epochs)//self._batch_size
-
-    def get_batch(self):
-        return self._left_batch,self._right_batch,self._gt_batch,self._dataset_param
-    
-    def get_couples(self):
-        return self._couples
-
-########################################################################################à
-
-class task_library():
-    """
-    Support class to handle definition and generation of adaptation tasks
-    """
-
-    def __init__(self, sequence_list, frame_per_task=5):
-
-        self._frame_per_task = frame_per_task
-
-        assert(os.path.exists(sequence_list))
-        
-        #read the list of sequences to load, each sequence is described by a txt file
-        with open(sequence_list) as f_in:
-            self._sequences = [x.strip() for x in f_in.readlines()]
-
-        #build task dictionary
-        self._task_dictionary={}
-        for f in self._sequences:
-            self._load_sequence(f)
-
-    def _load_sequence(self, filename):
-        """
-        Add a sequence to self._task_dictionary, saving the paths to the different files from filename
-        """
-        assert(os.path.exists(filename), filename)
-        left_files, right_files, gt_files,_ = read_list_file(filename)
-        
-        # find parameters to convert disparity map
-        dataset_param_list = find_dataset_param(gt_files)
-
-        self._task_dictionary[filename] = {
-            'left': left_files,
-            'right': right_files,
-            'gt': gt_files,
-            'num_frames': len(left_files),
-            'dataset_param_list': dataset_param_list
+    # read input data
+    with tf.variable_scope('input_reader'):
+        data_set = data_reader.dataset(
+            args.list,
+            batch_size=1,
+            crop_shape=crop_shape,
+            resize_shape=resize_shape,
+            num_epochs=1,
+            augment=False,
+            is_training=False,
+            shuffle=False
+        )
+        left_img_batch, right_img_batch, gt_image_batch, dataset_param = data_set.get_batch()
+        inputs = {
+            'left': left_img_batch,
+            'right': right_img_batch,
+            'target': gt_image_batch
         }
 
+    dataset_param = tf.strings.to_number(dataset_param)
 
-    def get_task(self):
-        """
-        Generate a task encoded as a 3 X num_frames matrix of path to load to get the respective frames
-        First row contains paths to left frames,
-        Second row contains paths to right frames,
-        Third row contains paths to gt frams
-        """
-        picked_task = random.choice(list(self._task_dictionary.keys()))
+    # build inference network
+    with tf.variable_scope('model'):
+        net_args = {}
+        net_args['left_img'] = left_img_batch
+        net_args['right_img'] = right_img_batch
+        net_args['split_layers'] = [None]
+        net_args['sequence'] = True
+        net_args['train_portion'] = 'BEGIN'
+        net_args['bulkhead'] = True if args.mode == 'MAD' else False
+        net_args['input_norm'] = True
+        stereo_net = Nets.factory.getStereoNet(args.modelName, net_args)
+        print('Stereo Prediction Model:\n', stereo_net)
+        predictions = stereo_net.get_disparities()
+        full_res_disp = predictions[-1]
+        corr = stereo_net._layers['dsi_6']
+        corr_2 = stereo_net._layers['corr_2']
 
-        #fetch all the samples from the current sequence
-        left_frames = self._task_dictionary[picked_task]['left']
-        right_frames = self._task_dictionary[picked_task]['right']
-        gt_frames = self._task_dictionary[picked_task]['gt']
-        num_frames = self._task_dictionary[picked_task]['num_frames']
-        dataset_param_list = self._task_dictionary[picked_task]['dataset_param_list']
+    # build real full resolution loss
+    with tf.variable_scope('full_res_loss'):
+        #full_reconstruction_loss = loss_factory.get_reprojection_loss('mean_SSIM_l1', reduced=True)(predictions, inputs)
+        full_reconstruction_loss = loss_factory.get_reprojection_loss('mean_SSIM_l1', reduced=True)([full_res_disp], inputs)
+        reprojection_error_map = loss_factory.get_reprojection_loss('ssim_l1', reduced=False)(predictions, inputs)[0]
 
-        max_start_frame = num_frames-self._frame_per_task-1
-        start_frame_index = random.randint(0,max_start_frame)
+    # build validation ops
+    with tf.variable_scope('validation_error'):
 
-        task_left = left_frames[start_frame_index:start_frame_index+self._frame_per_task]
-        task_right = right_frames[start_frame_index:start_frame_index+self._frame_per_task]
-        gt_frames = gt_frames[start_frame_index:start_frame_index+self._frame_per_task]
-        dataset_param = dataset_param_list[start_frame_index:start_frame_index+self._frame_per_task]
+        print(f'dataset_param is {dataset_param}! depth to diaparity conversion!')
+        valid_map = tf.where(tf.equal(gt_image_batch, 0), tf.zeros_like(gt_image_batch, dtype=tf.float32), tf.ones_like(gt_image_batch, dtype=tf.float32))
+        gt_image_batch = gt_image_batch - 1 + valid_map
+        gt_image_batch = tf.clip_by_value(dataset_param * tf.math.reciprocal(gt_image_batch), -1, 1000)
+        gt_image_batch = gt_image_batch * valid_map
+        abs_err = tf.abs(full_res_disp - gt_image_batch)
 
-        result = np.array([task_left,task_right,gt_frames,dataset_param])
-        return result
+        abs_err_map = tf.abs(full_res_disp - gt_image_batch)
+        filtered_error = abs_err * valid_map
 
-    def __call__(self):
-        """
-        Generator that returns a number of tasks equal to the number of different seuqences in self._taskLibrary
-        """
-        for i in range(len(self._task_dictionary)):
-            yield self.get_task()
+        abs_err = tf.reduce_sum(filtered_error) / tf.reduce_sum(valid_map)
+        bad_pixel_abs = tf.where(tf.greater(filtered_error, PIXEL_TH), tf.ones_like(filtered_error, dtype=tf.float32),
+                                 tf.zeros_like(filtered_error, dtype=tf.float32))
+        bad_pixel_perc = tf.reduce_sum(bad_pixel_abs) / tf.reduce_sum(valid_map)
 
-    def __len__(self):
-        """
-        Number of tasks/sequences defined in the library
-        """
-        return len(self._task_dictionary)
+    # build train ops
+    #disparity_trainer = tf.train.MomentumOptimizer(args.lr, 0.9)
+    disparity_trainer = tf.train.AdamOptimizer(args.lr)
+    train_ops = []
+    if args.mode == 'MAD':
+        # build train ops for separate portion of the network
+        predictions = predictions[:-1]  # remove full res disp
 
-class metaDataset():
-    """
-    Class that reads a dataset for deep stereo
-    """
-    def __init__(
-        self,
-        sequence_list_file,
-        batch_size=4,
-        sequence_length=4,
-        resize_shape=[None,None],
-        crop_shape=[None,None],
-        num_epochs=None,
-        augment=False,
-        original_shape=False):
-    
-        if not os.path.exists(sequence_list_file):
-            raise Exception('File not found during dataset construction')
-    
-        self._sequence_list_file = sequence_list_file
-        self._batch_size = batch_size
-        self._resize_shape = resize_shape
-        self._crop_shape = crop_shape
-        self._num_epochs = num_epochs
-        self._augment = augment
-        self._sequence_length = sequence_length
-        self._original_shape = original_shape
+        inputs_modules = {
+            'left': scale_tensor(left_img_batch, args.reprojectionScale),
+            'right': scale_tensor(right_img_batch, args.reprojectionScale),
+            'target': scale_tensor(gt_image_batch, args.reprojectionScale) / args.reprojectionScale
+        }
 
-        #create task_library
-        self._task_library = task_library(self._sequence_list_file,self._sequence_length)
+        assert (len(predictions) == len(train_config))
+        for counter, p in enumerate(predictions):
+            print('Build train ops for disparity {}'.format(counter))
 
-        #setup input pipeline
-        self._build_input_pipeline()
-    
-    def _decode_gt(self, gt):
-        if self._usePfm:
-            gt_image_op = tf.py_func(lambda x: readPFM(x)[0], [gt], tf.float32)
-            gt_image_op.set_shape([None,None,1])
+            # rescale predictions to proper resolution
+            multiplier = tf.cast(tf.shape(left_img_batch)[1] // tf.shape(p)[1], tf.float32)
+            p = preprocessing.resize_to_prediction(p, inputs_modules['left']) * multiplier
+
+            # compute reprojection error
+            with tf.variable_scope('reprojection_' + str(counter)):
+                reconstruction_loss = loss_factory.get_reprojection_loss('mean_SSIM_l1', reduced=True)([p],
+                                                                                                       inputs_modules)
+
+            # build train op
+            layer_to_train = train_config[counter]
+            print('Going to train on {}'.format(layer_to_train))
+            var_accumulator = []
+            for name in layer_to_train:
+                var_accumulator += stereo_net.get_variables(name)
+            print('Number of variable to train: {}'.format(len(var_accumulator)))
+
+            # add new training op
+            train_ops.append(disparity_trainer.minimize(reconstruction_loss, var_list=var_accumulator))
+
+            print('Done')
+            print('=' * 50)
+
+        # create Sampler to fetch portions to train
+        sampler = sampler_factory.get_sampler(args.sampleMode, args.numBlocks, args.fixedID)
+
+    elif args.mode == 'FULL':
+        # build single train op for the full network
+        train_ops.append(disparity_trainer.minimize(full_reconstruction_loss))
+
+    if args.summary:
+        # add summaries
+        tf.summary.scalar('EPE', abs_err)
+        tf.summary.scalar('bad3', bad_pixel_perc)
+        tf.summary.image('full_res_disp', preprocessing.colorize_img(full_res_disp, cmap='jet'), max_outputs=1)
+        tf.summary.image('gt_disp', preprocessing.colorize_img(gt_image_batch, cmap='jet'), max_outputs=1)
+
+        # create summary logger
+        summary_op = tf.summary.merge_all()
+        logger = tf.summary.FileWriter(args.output)
+
+    # start session
+    # gpu_options = tf.GPUOptions(allow_growth=True)
+    # gpu_options = tf.GPUOptions(allow_growth=True, visible_device_list="1")
+    gpu_options = tf.GPUOptions(allow_growth=True, visible_device_list=args.gpu_num)
+    with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)) as sess:
+        # init stuff
+        sess.run([tf.global_variables_initializer(), tf.local_variables_initializer()])
+
+        if 'Learning' in args.weights or 'PointFix' in args.weights:
+            prefix = "model"
+            ignore_list = ['train_model']
         else:
-            read_type = tf.uint16 if self._double_prec_gt else tf.uint8
-            gt_image_op = read_image_from_disc(gt,shape=[None,None,1], dtype=read_type)
-            gt_image_op = tf.cast(gt_image_op,tf.float32)
-            if self._double_prec_gt:
-                gt_image_op = gt_image_op/256.0
-        return gt_image_op
+            prefix = ""
+            ignore_list = []
 
-    
-    def _load_task(self, files):
-        """
-        Load all the image and return them as three lists, [left_files], [right_files], [gt_files]
-        """
-        #from 3xk to kx3
-        left_files = files[0]
-        right_files = files[1]
-        gt_files = files[2]
-        dataset_param = files[3]
+        # restore disparity inference weights
+        var_to_restore = weights_utils.get_var_to_restore_list(args.weights, prefix=prefix, ignore_list=ignore_list)
+        assert (len(var_to_restore) > 0)
+        restorer = tf.train.Saver(var_list=var_to_restore)
+        restorer.restore(sess, args.weights)
+        print('Disparity Net Restored?: {}, number of restored variables: {}'.format(True, len(var_to_restore)))
 
-        #read images
-        left_task_samples = tf.map_fn(read_image_from_disc,left_files,dtype = tf.float32, parallel_iterations=self._sequence_length)
-        left_task_samples.set_shape([self._sequence_length, None, None, 3])
-        right_task_samples = tf.map_fn(read_image_from_disc,right_files,dtype = tf.float32, parallel_iterations=self._sequence_length)
-        right_task_samples.set_shape([self._sequence_length, None, None, 3])
-        gt_task_samples = tf.map_fn(self._decode_gt, gt_files, dtype=tf.float32, parallel_iterations=self._sequence_length)
-        gt_task_samples.set_shape([self._sequence_length, None, None, 1])
-
-        if self._original_shape:
-            img_shape = left_task_samples.get_shape().as_list()
-            gt_shape = gt_task_samples.get_shape().as_list()
-
-            left_task_samples.set_shape([img_shape[0], self._resize_shape[0], self._resize_shape[1], img_shape[-1]])
-            right_task_samples.set_shape([img_shape[0], self._resize_shape[0], self._resize_shape[1], img_shape[-1]])
-            gt_task_samples.set_shape([gt_shape[0], self._resize_shape[0], self._resize_shape[1], gt_shape[-1]])
-            #pass
+        num_actions = len(train_ops)
+        if args.mode == 'FULL':
+            selected_train_ops = train_ops
         else:
-            #alligned image resize
-            if self._resize_shape[0] is not None:
-                scale_factor = tf.cast(tf.math.maximum(tf.shape(left_task_samples)[1]/self._resize_shape[0],1), tf.float32)
-                left_task_samples = preprocessing.rescale_image(left_task_samples,self._resize_shape)
-                right_task_samples = preprocessing.rescale_image(right_task_samples,self._resize_shape)
-                gt_task_samples = tf.image.resize_nearest_neighbor(gt_task_samples,self._resize_shape)*scale_factor
+            selected_train_ops = [tf.no_op()]
 
-            #alligned random crop
-            if self._crop_shape[0] is not None:
-                left_task_samples,right_task_samples,gt_task_samples = preprocessing.random_crop(self._crop_shape, [left_task_samples,right_task_samples,gt_task_samples])
+        epe_accumulator = []
+        bad3_accumulator = []
+        time_accumulator = []
+        exec_time = 0
+        fetch_counter = [0] * num_actions
+        sample_distribution = np.zeros(shape=[num_actions])
+        temp_score = np.zeros(shape=[num_actions])
+        loss_t_2 = 0
+        loss_t_1 = 0
+        expected_loss = 0
+        last_trained_blocks = []
+        reset_counter = 0
+        step = 0
+        max_steps = data_set.get_max_steps()
+        total_step_time = 0
 
-        #augmentation
-        if self._augment:
-            left_task_samples,right_task_samples=preprocessing.augment(left_task_samples,right_task_samples)
+        try:
+            start_time = time.time()
+            while True:
 
-        return [left_task_samples, right_task_samples, gt_task_samples, dataset_param]
+                if step == 10:
+                    global_start_time = time.time()
+
+                # fetch new network portion to train
+                if step % args.sampleFrequency == 0 and args.mode == 'MAD':
+                    # Sample
+                    distribution = softmax(sample_distribution)
+                    blocks_to_train = sampler.sample(distribution)
+                    selected_train_ops = [train_ops[i] for i in blocks_to_train]
+
+                    # accumulate sampling statistics
+                    for l in blocks_to_train:
+                        fetch_counter[l] += 1
+
+                # build list of tensorflow operations that needs to be executed
+
+                # errors and full resolution loss
+                tf_fetches = [abs_err, bad_pixel_perc, full_reconstruction_loss, full_res_disp, gt_image_batch, corr, corr_2, reprojection_error_map, left_img_batch]
+
+                if args.summary and step % 100 == 0:
+                    # summaries
+                    tf_fetches = tf_fetches + [summary_op]
+
+                # update ops
+                tf_fetches = tf_fetches + selected_train_ops
+
+                if args.logDispStep != -1 and step % args.logDispStep == 0:
+                    # prediction for serialization to disk
+                    tf_fetches = tf_fetches + [abs_err_map, filtered_error]
+
+                # run network
+                if step >= 10:
+                    time_step_start = time.time()
+                fetches = sess.run(tf_fetches)
+                if step >= 10:
+                    total_step_time += (time.time() - time_step_start)
+                new_loss = fetches[2]
+
+                if args.mode == 'MAD':
+                    # update sampling probabilities
+                    if step == 0:
+                        loss_t_2 = new_loss
+                        loss_t_1 = new_loss
+                    expected_loss = 2 * loss_t_1 - loss_t_2
+                    gain_loss = expected_loss - new_loss
+                    sample_distribution = 0.99 * sample_distribution
+                    for i in last_trained_blocks:
+                        sample_distribution[i] += 0.01 * gain_loss
+
+                    last_trained_blocks = blocks_to_train
+                    loss_t_2 = loss_t_1
+                    loss_t_1 = new_loss
+
+                # accumulate performance metrics
+                epe_accumulator.append(fetches[0])
+                bad3_accumulator.append(fetches[1])
+
+                if step % 100 == 0:
+                    # log on terminal
+                    fbTime = (time.time() - start_time)
+                    exec_time += fbTime
+                    fbTime = fbTime / 100
+                    if args.summary:
+                        logger.add_summary(fetches[3], global_step=step)
+                    missing_time = (max_steps - step) * fbTime
+                    print(f'Step:{step:4d}\tbad3:{fetches[1]:.2f}\tEPE:{fetches[0]:.2f}\tSSIM:{new_loss:.2f}\tf/b time:{fbTime:3f}\tMissing time:{datetime.timedelta(seconds=missing_time)}')
+                    start_time = time.time()
+
+                # reset network if necessary
+                if new_loss > args.SSIMTh:
+                    restorer.restore(sess, args.weights)
+                    reset_counter += 1
+
+                # save disparity if requested
+                if args.logDispStep != -1 and step % args.logDispStep == 0:
+                    cv2.imwrite(os.path.join(args.output, 'rgbs/left_{}.png'.format(step)), fetches[8][0, :, :, ::-1].astype(np.uint8))
+
+                    dispy = fetches[3]
+                    dispy_to_save = dispy[0]
+                    dispy_to_save = cv2.applyColorMap(dispy_to_save.astype(np.uint8), cv2.COLORMAP_JET)
+                    cv2.imwrite(os.path.join(args.output, 'disparities/disparity_{}.png'.format(step)), dispy_to_save)
+
+                    dispy = fetches[4]
+                    dispy_to_save = dispy[0]
+                    dispy_to_save = cv2.applyColorMap(dispy_to_save.astype(np.uint8), cv2.COLORMAP_JET)
+                    cv2.imwrite(os.path.join(args.output, 'gt/gt_{}.png'.format(step)), dispy_to_save)
+
+                step += 1
+
+        except tf.errors.OutOfRangeError:
+            pass
+        finally:
+            global_end_time = time.time()
+            avg_execution_time = total_step_time/(step-10)
+            epe_array = epe_accumulator
+            bad3_array = bad3_accumulator
+            epe_accumulator = np.sum(epe_accumulator)
+            bad3_accumulator = np.sum(bad3_accumulator)
+            with open(os.path.join(args.output, 'stats.csv'), 'w+') as f_out:
+                # report series
+                f_out.write('Metrics,cumulative,average\n')
+                f_out.write('EPE,{},{}\n'.format(epe_accumulator, epe_accumulator / step))
+                f_out.write('bad3,{},{}\n'.format(bad3_accumulator, bad3_accumulator / step))
+                # f_out.write('time,{},{}\n'.format(exec_time,exec_time/step))
+                f_out.write('time,{},{}\n'.format(avg_execution_time * step, avg_execution_time))
+                # f_out.write('FPS,{}\n'.format(1/(exec_time/step)))
+                f_out.write('FPS,{}\n'.format(1 / (avg_execution_time)))
+                f_out.write('#resets,{}\n'.format(reset_counter))
+                f_out.write('Blocks')
+                for n in range(len(predictions)):
+                    f_out.write(',{}'.format(n))
+                f_out.write(',final\n')
+                f_out.write('fetch_counter')
+                for c in fetch_counter:
+                    f_out.write(',{}'.format(c))
+                f_out.write('\n')
+                for c in sample_distribution:
+                    f_out.write(',{}'.format(c))
+                f_out.write('\n')
+
+            step_time = exec_time / step
+            time_array = [str(x * step_time) for x in range(len(epe_array))]
+
+            with open(os.path.join(args.output, 'series.csv'), 'w+') as f_out:
+                f_out.write('Iteration,Time,EPE,bad3\n')
+                for i, (t, e, b) in enumerate(zip(time_array, epe_array, bad3_array)):
+                    f_out.write('{},{},{},{}\n'.format(i, t, e, b))
+
+            print('Result saved in {}'.format(args.output))
+
+            print('All Done, Bye Bye!')
 
 
-    def _build_input_pipeline(self):
-        #fetch one sample to setup flags
-        task_sample = self._task_library.get_task()
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Script for online Adaptation of a Deep Stereo Network')
+    parser.add_argument("-l", "--list", help='path to the list file with frames to be processed', required=True)
+    parser.add_argument("-o", "--output", help="path to the output folder where the results will be saved",
+                        required=True)
+    parser.add_argument("--weights", help="path to the initial weights for the disparity estimation network",
+                        required=True)
+    parser.add_argument("--modelName", help="name of the stereo model to be used", default="Dispnet",
+                        choices=Nets.factory.getAvailableNets())
+    parser.add_argument("--numBlocks", help="number of CNN portions to train at each iteration", type=int, default=1)
+    parser.add_argument("--lr", help="value for learning rate", default=0.0001, type=float)
+    parser.add_argument("--blockConfig", help="path to the block_config json file", required=True)
+    parser.add_argument("--sampleMode", help="choose the sampling heuristic to use",
+                        choices=sampler_factory.AVAILABLE_SAMPLER, default='SAMPLE')
+    parser.add_argument("--fixedID", help="index of the portions of network to train, used only if sampleMode=FIXED",
+                        type=int, nargs='+', default=[0])
+    parser.add_argument("--reprojectionScale", help="compute all loss function at 1/reprojectionScale", default=1,
+                        type=int)
+    parser.add_argument("--summary", help='flag to enable tensorboard summaries', action='store_true')
+    parser.add_argument("--imageShape",
+                        help='two int for the size of the crop extracted from each image [height,width]', nargs='+',
+                        type=int, default=[320, 1216])
+    parser.add_argument("--SSIMTh", help="reset network to initial configuration if loss is above this value",
+                        type=float, default=0.5)
+    parser.add_argument("--sampleFrequency", help="sample new network portions to train every K frame", type=int,
+                        default=1)
+    parser.add_argument("--mode",
+                        help="online adaptation mode: NONE - perform only inference, FULL - full online backprop, MAD - backprop only on portions of the network",
+                        choices=['NONE', 'FULL', 'MAD'], default='MAD')
+    parser.add_argument("--logDispStep", help="save disparity every K step, -1 to disable", default=-1, type=int)
+    parser.add_argument("--resize_flag", help="flag to resize input", default=False)
+    parser.add_argument("--crop_flag", help="flag to crop input", action='store_true')
+    parser.add_argument("--gpu_num", help="gpu index to run", default="0")
+    args = parser.parse_args()
 
-        gt_sample = task_sample[2,0]
-        #flags
-        self._usePfm = gt_sample.endswith('pfm') or gt_sample.endswith('PFM')
-        if not self._usePfm:
-            gg = cv2.imread(gt_sample,-1)
-            self._double_prec_gt = (gg.dtype == np.uint16)
+    if not os.path.exists(args.output):
+        os.makedirs(args.output)
+    if args.logDispStep != -1 and not os.path.exists(os.path.join(args.output, 'disparities')):
+        os.makedirs(os.path.join(args.output, 'rgbs'))
+        os.makedirs(os.path.join(args.output, 'disparities'))
+        os.makedirs(os.path.join(args.output, 'gt'))
+    shutil.copy(args.blockConfig, os.path.join(args.output, 'config.json'))
+    with open(os.path.join(args.output, 'params.sh'), 'w+') as out:
+        sys.argv[0] = os.path.join(os.getcwd(), sys.argv[0])
+        out.write('#!/bin/bash\n')
+        out.write('python3 ')
+        out.write(' '.join(sys.argv))
+        out.write('\n')
+    main(args)
 
-        print('Input file loaded, starting to build input pipelines')
-        print('FLAGS:')
-        print('_usePfmGt',self._usePfm)
-
-        #create dataset
-        dataset = tf.data.Dataset.from_generator(self._task_library,(tf.string)).repeat(self._num_epochs)
-
-        #load images
-        dataset = dataset.map(self._load_task)
-
-        #transform data
-        dataset = dataset.batch(self._batch_size, drop_remainder=True)
-        dataset = dataset.prefetch(buffer_size=10)
-
-        #get iterator and batches
-        iterator = dataset.make_one_shot_iterator()
-        samples = iterator.get_next()
-        self._left_batch = samples[0]
-        self._right_batch = samples[1]
-        self._gt_batch = samples[2]
-        self._dataset_param = samples[3]
-
-    ################# PUBLIC METHOD #######################
-
-    def __len__(self):
-        return len(self._task_library)
-
-    def get_max_steps(self):
-        return (len(self)*self._num_epochs)//self._batch_size
-
-    def get_batch(self):
-        return self._left_batch,self._right_batch, self._gt_batch, self._dataset_param
-
-
-########################################################àà
