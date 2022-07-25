@@ -26,8 +26,6 @@ def get_variable(name,kernel_shape,initializer,variable_collection,trainable=Tru
 	if variable_collection is None:
 		return tf.get_variable(name,kernel_shape,initializer=initializer,trainable=trainable)
 	else:
-		#print(f'variable_collection is {variable_collection}')
-		print(f"tf.get_variable_scope().name+'/'+name is {tf.get_variable_scope().name+'/'+name}")
 		return variable_collection[tf.get_variable_scope().name+'/'+name]
 
 def batch_norm(x, training=False, momentum=0.99, variable_collection=None, activation=None):
@@ -36,14 +34,8 @@ def batch_norm(x, training=False, momentum=0.99, variable_collection=None, activ
 		beta = get_variable('beta', [n_out],INITIALIZER_ZEROS,variable_collection)
 		gamma = get_variable('gamma', [n_out],INITIALIZER_ONES,variable_collection)
 		#compute moments of incoming batch
-		#axes = [0,1,2] if len(x.get_shape())==4 else [0,1,2,3]
 		axes = list(range(len(x.get_shape())-1))
-		print("x.get_shape() ", x.get_shape())
-		print("axes ", axes)
-		#axes = axes[1:3]
-		print("axes for instance normalization ", axes)
 		batch_mean, batch_var = tf.nn.moments(x, axes, name='moments')
-		#create explicit variable for keeping mean and variance without tensorflow bullshit
 		mean = get_variable('moving_mean',batch_mean.get_shape(),INITIALIZER_ZEROS,variable_collection,trainable=False)
 		var = get_variable('moving_variance', batch_var.get_shape(),INITIALIZER_ONES,variable_collection,trainable=False)
 		if training:
@@ -59,27 +51,10 @@ def batch_norm(x, training=False, momentum=0.99, variable_collection=None, activ
 			#mean_eval = batch_mean
 			#var_eval = batch_var
 
-
-		"""
-		re_shape = list(x.get_shape())
-		for axe in axes:
-			re_shape[axe] = 1
-
-		mean_eval = tf.reshape(mean_eval, re_shape)
-		var_eval = tf.reshape(var_eval, re_shape)
-		"""
-
-		print("mean_eval ", mean_eval)
-		print("var_eval ", var_eval)
-		print("beta ", beta)
-		print("gamma ", gamma)
-
 		#finally perform batch norm
 		normed = tf.nn.batch_normalization(x, mean_eval, var_eval, beta, gamma, 1e-3)
-		print("normed ", normed)
 		if activation != None:
 			normed = activation(normed)
-			print("normed activated ", normed)
 		return normed
 
 def conv1d(x, kernel_shape, strides=1, activation=lambda x: tf.maximum(0.1 * x, x), padding='SAME', name='conv', reuse=False, wName='weights', bName='bias', bn=False, training=False, variable_collection=None):
@@ -238,19 +213,5 @@ def weighting_network(input_data,reuse=False, kernel_size=3,kernel_channels=64,t
 
 	return weight_scaled, tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES,scope=tf.get_variable_scope().name+'/feed_forward')
 
-
-def adapting_module(input_data,reuse=False, kernel_size=3,training=False,activation=lambda x: tf.maximum(0.1 * x, x), variable_collection=None):
-	print(f'input_data.shape for adapting_network is {input_data.shape}')
-	num_channel = input_data.shape[-1].value
-	full_res_shape = input_data.get_shape().as_list()
-	input_data = tf.stop_gradient(input_data)
-	with tf.variable_scope('adapting_network',reuse=reuse):
-		adapted = conv2d(input_data,[kernel_size,kernel_size,num_channel,num_channel],activation=activation,training=training, padding="SAME",name="conv1", variable_collection=variable_collection)
-		# adapted = conv2d(x, [kernel_size,kernel_size,num_channel,num_channel],activation=activation,training=training, padding="SAME",name="conv2", variable_collection=variable_collection)
-
-		#normalize weights
-		#weight_scaled = normalize(weight_scaled, blind=True)
-
-	return adapted
 
 
