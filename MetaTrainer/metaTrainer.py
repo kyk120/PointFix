@@ -193,7 +193,6 @@ class MetaTrainer(object):
         self._alpha = args['alpha']
         self._adaptation_steps = self._inputs['left'][0].get_shape()[0].value-1
         self._metaTaskPerBatch = max([self._inputs['left'].get_shape()[0].value, 1])
-        self._dataset_param = args['dataset_param']
 
         with tf.variable_scope('utils'):
             self._global_step=tf.Variable(0,trainable=False,name='global_step')
