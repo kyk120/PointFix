@@ -94,15 +94,11 @@ class PointFix(metaTrainer.MetaTrainer):
         gt_input = tf.where(tf.is_finite(inputs['target']), inputs['target'], tf.zeros_like(inputs['target']))
 
         valid_map = tf.cast(tf.logical_not(tf.equal(gt_input, 0)), tf.float32)
-        gt_input_disp = gt_input - 1 + valid_map
-
-        targets_disp = tf.clip_by_value(self._dataset_param * tf.math.reciprocal(gt_input_disp), -1, 1000)
-        targets_disp = targets_disp * valid_map
 
         fe_config = [5, 32, 64, 128]
         fe_args = {
             'prediction': full_res_disp / 128,  # MAX_DISP,
-            'reprojection': targets_disp / 128,
+            'reprojection': gt_input / 128,
             'left': inputs['left'] / 255,
             'variable_collection': fe_var
         }
@@ -116,7 +112,7 @@ class PointFix(metaTrainer.MetaTrainer):
         print(f'post_feature_map is {post_feature_map}')
 
         # compute error against gt
-        abs_err = tf.abs(full_res_disp - targets_disp)
+        abs_err = tf.abs(full_res_disp - gt_input)
         # valid_map = tf.cast(tf.logical_not(tf.equal(gt_input, 0)), tf.float32)
         filtered_error = abs_err * valid_map
 
@@ -141,7 +137,7 @@ class PointFix(metaTrainer.MetaTrainer):
         post_features = point_sample(post_feature_map, point_coords)
         print(f'post_features.shape is {post_features.shape}')
 
-        gt_logits = point_sample(targets_disp, point_coords)
+        gt_logits = point_sample(gt_input, point_coords)
         print(f'gt_logits.shape is {gt_logits.shape}')
         self._gt_logits = gt_logits
 
@@ -227,15 +223,11 @@ class PointFix(metaTrainer.MetaTrainer):
         gt_input = tf.where(tf.is_finite(inputs['target']), inputs['target'], tf.zeros_like(inputs['target']))
 
         valid_map = tf.cast(tf.logical_not(tf.equal(gt_input, 0)), tf.float32)
-        gt_input_disp = gt_input - 1 + valid_map
-
-        targets_disp = tf.clip_by_value(self._dataset_param * tf.math.reciprocal(gt_input_disp), -1, 1000)
-        targets_disp = targets_disp * valid_map
 
         fe_config = [5, 32, 64, 128]
         fe_args = {
             'prediction': full_res_disp / 128,  # MAX_DISP,
-            'reprojection': targets_disp / 128,
+            'reprojection': gt_input / 128,
             'left': inputs['left'] / 255,
             'variable_collection': self._var_dict_fe
         }
@@ -248,8 +240,8 @@ class PointFix(metaTrainer.MetaTrainer):
 
         # compute error against gt
         print(f'full_res_disp is {full_res_disp}')
-        print(f'targets_disp is {targets_disp}')
-        abs_err = tf.abs(full_res_disp - targets_disp)
+        print(f'gt_input is {gt_input}')
+        abs_err = tf.abs(full_res_disp - gt_input)
         # valid_map = tf.cast(tf.logical_not(tf.equal(gt_input, 0)), tf.float32)
         filtered_error = abs_err * valid_map
 
@@ -274,7 +266,7 @@ class PointFix(metaTrainer.MetaTrainer):
         post_features = point_sample(post_feature_map, point_coords)
         print(f'post_features.shape is {post_features.shape}')
 
-        gt_logits = point_sample(targets_disp, point_coords)
+        gt_logits = point_sample(gt_input, point_coords)
         print(f'gt_logits.shape is {gt_logits.shape}')
         self._gt_logits_update = gt_logits
 
@@ -374,7 +366,7 @@ class PointFix(metaTrainer.MetaTrainer):
                 ph_var = self._var_dict_ph
 
             else:
-                current_loss = self._loss([self._full_res_disp], inputs, dataset_param=self._dataset_param)
+                current_loss = self._loss([self._full_res_disp], inputs)
                 loss_collection.append(current_loss)
                 self.disp_map.append(self._full_res_disp)
 
