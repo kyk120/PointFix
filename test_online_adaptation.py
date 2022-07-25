@@ -81,8 +81,6 @@ def main(args):
         print('Stereo Prediction Model:\n', stereo_net)
         predictions = stereo_net.get_disparities()
         full_res_disp = predictions[-1]
-        corr = stereo_net._layers['dsi_6']
-        corr_2 = stereo_net._layers['corr_2']
 
     # build real full resolution loss
     with tf.variable_scope('full_res_loss'):
@@ -232,7 +230,7 @@ def main(args):
                 # build list of tensorflow operations that needs to be executed
 
                 # errors and full resolution loss
-                tf_fetches = [abs_err, bad_pixel_perc, full_reconstruction_loss, full_res_disp, gt_image_batch, corr, corr_2, reprojection_error_map, left_img_batch]
+                tf_fetches = [abs_err, bad_pixel_perc, full_reconstruction_loss, full_res_disp, gt_image_batch, left_img_batch]
 
                 if args.summary and step % 100 == 0:
                     # summaries
@@ -290,7 +288,6 @@ def main(args):
 
                 # save disparity if requested
                 if args.logDispStep != -1 and step % args.logDispStep == 0:
-                    cv2.imwrite(os.path.join(args.output, 'rgbs/left_{}.png'.format(step)), fetches[8][0, :, :, ::-1].astype(np.uint8))
 
                     dispy = fetches[3]
                     dispy_to_save = dispy[0]
@@ -301,6 +298,8 @@ def main(args):
                     dispy_to_save = dispy[0]
                     dispy_to_save = cv2.applyColorMap(dispy_to_save.astype(np.uint8), cv2.COLORMAP_JET)
                     cv2.imwrite(os.path.join(args.output, 'gt/gt_{}.png'.format(step)), dispy_to_save)
+
+                    cv2.imwrite(os.path.join(args.output, 'rgbs/left_{}.png'.format(step)), fetches[5][0, :, :, ::-1].astype(np.uint8))
 
                 step += 1
 
@@ -397,4 +396,3 @@ if __name__ == '__main__':
         out.write(' '.join(sys.argv))
         out.write('\n')
     main(args)
-
