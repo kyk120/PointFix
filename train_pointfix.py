@@ -37,6 +37,18 @@ def main(args):
                 original_shape=args.originalShape)
 
             left_train_batch, right_train_batch, gt_train_batch, dataset_param_batch = data_set.get_batch()
+        
+            dataset_param_batch = tf.strings.to_number(dataset_param_batch)
+            valid_map = tf.where(tf.equal(gt_train_batch, 0), tf.zeros_like(gt_train_batch, dtype=tf.float32), tf.ones_like(gt_train_batch, dtype=tf.float32))
+            dataset_param_batch = tf.expand_dims(tf.expand_dims(tf.expand_dims(dataset_param_batch, -1), -1), -1)
+            if args.dataset_param != 'SFSUB':
+                print(f'depth to diaparity map conversion applied!')
+                gt_train_batch = gt_train_batch - 1 + valid_map
+                gt_train_batch = tf.clip_by_value(dataset_param_batch * tf.math.reciprocal(gt_train_batch), -1, 1000)
+                gt_train_batch = gt_train_batch * valid_map
+            else:
+                print(f'diaparity map inversion applied!')
+                gt_train_batch = tf.math.multiply(dataset_param_batch, gt_train_batch)                
 
         # Build meta trainer
         with tf.variable_scope('train_model') as scope:
@@ -51,15 +63,8 @@ def main(args):
             t_args['inputs'] = input_meta_train
             t_args['model'] = args.modelName
 
-            if args.dataset_param == 'KITTI':
-                dataset_param = 380.0
-            else:
-                dataset_param = 166.0
-
-            t_args['dataset_param'] = dataset_param
-
             masked = args.maskedGT
-            t_args['loss'] = get_loss(args.loss, args.unSupervised, masked=masked, dataset_param=dataset_param)
+            t_args['loss'] = get_loss(args.loss, args.unSupervised, masked=masked)
             t_args['adaptationLoss'] = get_loss(args.adaptationLoss, args.unSupervisedMeta, masked=masked)
 
             t_args['lr'] = args.lr
