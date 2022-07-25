@@ -275,7 +275,7 @@ def get_supervised_loss(name, multiScale=False, logs=False, weights=None, reduce
 		weights = [1]*10
 	if max_disp is None:
 		max_disp=1000
-	def compute_loss(disparities,inputs,dataset_param):
+	def compute_loss(disparities,inputs,dataset_param=None):
 		left = inputs['left']
 		right = inputs['right']
 		targets = inputs['target']
@@ -292,9 +292,13 @@ def get_supervised_loss(name, multiScale=False, logs=False, weights=None, reduce
 			valid_map = tf.cast(tf.logical_not(tf.equal(targets, 0)), tf.float32)
 			targets = targets - 1 + valid_map
 
-		# Convert depth map to disparity map
-		targets_disp = tf.clip_by_value(dataset_param * tf.math.reciprocal(targets), -1, 1000)
-		targets_disp = targets_disp * valid_map
+		if dataset_param:
+			# Convert depth map to disparity map
+			print(f'Convert depth to disparity in compute_loss.')
+			targets_disp = tf.clip_by_value(dataset_param * tf.math.reciprocal(targets), -1, 1000)
+			targets_disp = targets_disp * valid_map
+		else:
+			targets_disp = targets
 
 		for i in range(0,disp_to_test):
 			#upsample prediction
