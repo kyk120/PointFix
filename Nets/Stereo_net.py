@@ -56,12 +56,6 @@ class StereoNet(object):
         variables_local = tf.get_collection(tf.GraphKeys.LOCAL_VARIABLES, scope=scope)
         variables_global =  tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope=scope)
         variables = variables_local+variables_global
-        print(f'\nname is {name}')
-        print(f'op is {op}')
-        print(f'scope is {scope}')
-        print(f'variables_local is {variables_local}')
-        print(f'variables_global is {variables_global}')
-        print(f'name {name} is added to layer {variables}')
         self._layer_to_var[name] = variables
         self._variables_list.update(variables)
 
