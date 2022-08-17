@@ -197,10 +197,18 @@ class MetaTrainer(object):
         with tf.variable_scope('utils'):
             self._global_step=tf.Variable(0,trainable=False,name='global_step')
             self._lr = tf.constant(args['lr'],name='lr')
+            self._alpha = tf.constant(args['alpha'],name='alpha')
         self._increment_global_step = tf.assign_add(self._global_step,1)
         
         self._optimizer = tf.train.AdamOptimizer(self._lr)
-        self._optimizer_adapt = tf.train.AdamOptimizer(self._alpha)
+        print(f"args['lr'] is {args['lr']}")
+        print(f"args['alpha'] is {args['alpha']}")
+        if args['lr'] == args['alpha']:
+            print(f'optimizer reuse')
+            self._optimizer_adapt = self._optimizer
+        else:
+            print(f'separate optimizers')
+            self._optimizer_adapt = tf.train.AdamOptimizer(self._alpha)
     
     #========================PUBLIC METHOD===================================
     def perform_train_step(self,feed_dict=None):
